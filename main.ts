@@ -1,3 +1,6 @@
+// TWIN TIDES hand-in program: this entrypoint packages our spot-the-difference game —
+// it copies the static game/ build and its screenshots into the output directory and
+// writes the dossier.json summary that the make.fun judge reads for this entry.
 // A working best-game-01 entry (Node 22, standard library only): the game is this directory's
 // game/ folder, plain static files a desktop browser loads offline (game/index.html and its ES
 // modules, no library and no network request), and the program hands it in. It copies game/ and
@@ -12,7 +15,7 @@
 // Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
 //   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-game.ts';
@@ -39,3 +42,6 @@ writeFileSync(
     game_path_max_bytes: 1000,
   }),
 );
+
+// Hand-in receipt for TWIN TIDES: report what was packaged so a local run is easy to eyeball.
+console.log(`twin-tides dossier: ${statSync(join(out, 'dossier.json')).size} bytes; screenshots: ${readdirSync(join(out, 'screenshots')).sort().join(', ')}`);
