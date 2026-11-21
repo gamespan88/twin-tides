@@ -1,79 +1,53 @@
-// The screenshot scenes behind ?shot=start|play|end. Each one plays the real rules forward from a
-// fresh world for a fixed number of steps, steered by a simple autopilot (look ahead each way the
-// paddle could move, keep clear of blocks, chase the lowest coin when that is safe), so the frame
-// is what a short game really looks like and the same seed always gives the same frame.
-import { FIELD, PLAYER, STEP } from './config.js';
-import { EVENT_OVER, KIND_BLOCK } from './world.js';
-import { SCREEN_OVER, SCREEN_PLAY, SCREEN_TITLE } from './render.js';
+// shots.js — TWIN TIDES screenshot staging. ?shot=<name> poses a deterministic mid-game
+// moment so the kit screenshots are real renders of real play states:
+//   cover  — Dawn Harbour, 4 of 9 found, loupe open on the right panel
+//   market — Night Market, 3 of 9 found
+//   beach  — Coral Beach, 7 of 9 found
+//   scenes — scene-select with two scenes completed (progress on the cards)
 
-const START_SECONDS = 5;
-const PLAY_SECONDS = 26;
-const END_LIMIT_SECONDS = 600;
-/**
- * How far ahead, in seconds, the autopilot checks each way it could move: the play scene's pilot
- * looks well ahead and keeps all its lives; the end scene's looks only a moment ahead, so it is
- * caught out once the blocks speed up, as a hurried player is.
- */
-const HORIZON_PLAY = 0.7;
-const HORIZON_END = 0.25;
-const SAMPLE = 1 / 30;
-const DIRECTIONS = [0, -1, 1];
-/** Extra room, each side, it keeps between the paddle and a block. */
-const MARGIN = 10;
+import { G, startScene, PANEL_X, PANEL_Y } from './game.js';
 
-/** Seconds until moving in `direction` (-1, 0, 1) runs the paddle into a block; Infinity when it never does. */
-function timeToHit(state, direction, horizon) {
-  const player = state.player;
-  for (let t = SAMPLE; t <= horizon; t += SAMPLE) {
-    const x = Math.min(FIELD.width - player.width, Math.max(0, player.x + direction * PLAYER.speed * t));
-    for (let index = 0; index < state.items.length; index += 1) {
-      const item = state.items[index];
-      if (!item.active || item.kind !== KIND_BLOCK) continue;
-      const y = item.y + item.speed * t;
-      if (y + item.height > player.y && y < player.y + player.height && item.x < x + player.width + MARGIN && item.x + item.width > x - MARGIN) return t;
-    }
-  }
-  return Infinity;
-}
+export function applyStage() {
+  const q = new URLSearchParams(location.search);
+  const shot = q.get('shot');
+  if (!shot) return false;
 
-/** Of the safe ways to move, the one toward the lowest coin (or the centre); else the one that is hit last. */
-function autopilot(state, horizon) {
-  const player = state.player;
-  let coin = null;
-  for (let index = 0; index < state.items.length; index += 1) {
-    const item = state.items[index];
-    if (item.active && item.kind !== KIND_BLOCK && (coin === null || item.y > coin.y)) coin = item;
+  G.frozen = true; // clock holds the posed time
+  if (shot === 'scenes') {
+    G.progress = {
+      scenes: {
+        0: { done: true, best: 96, stars: 3 },
+        1: { done: true, best: 148, stars: 2 },
+      },
+      total: 2140,
+    };
+    G.score = 2140;
+    G.screen = 'menu';
+    return true;
   }
-  const target = coin === null ? FIELD.width / 2 : coin.x + coin.width / 2;
-  const centre = player.x + player.width / 2;
-  const wanted = target > centre + 8 ? 1 : target < centre - 8 ? -1 : 0;
-  let best = wanted;
-  let bestTime = timeToHit(state, wanted, horizon);
-  for (let index = 0; index < DIRECTIONS.length && bestTime !== Infinity; index += 1) {
-    const time = timeToHit(state, DIRECTIONS[index], horizon);
-    if (time > bestTime) {
-      bestTime = time;
-      best = DIRECTIONS[index];
-    }
-  }
-  return best;
-}
 
-/**
- * Set `world` to the named scene (start, play or end; any other name is start) and return the
- * screen to draw over it and the best score to show.
- */
-export function stageShot(name, world) {
-  world.reset();
-  if (name !== 'play' && name !== 'end') {
-    for (let index = 0; index < START_SECONDS / STEP; index += 1) world.step(STEP, 0, true);
-    return { screen: SCREEN_TITLE, best: 0 };
+  const poses = {
+    cover: { scene: 0, found: 4, time: 47, score: 400, hints: 3, strikes: 0 },
+    market: { scene: 2, found: 3, time: 83, score: 275, hints: 2, strikes: 1 },
+    beach: { scene: 3, found: 7, time: 121, score: 650, hints: 1, strikes: 2 },
+  };
+  const pose = poses[shot] || poses.cover;
+  startScene(pose.scene);
+  G.time = pose.time;
+  G.sceneScore = pose.score;
+  G.hints = pose.hints;
+  G.strikes = pose.strikes;
+  for (let i = 0; i < pose.found; i++) G.found.add(G.diffs[i].id);
+
+  if (shot === 'cover') {
+    // loupe open over a small, rich unfound difference on the right panel
+    const unfound = G.diffs.filter((d, i) => i >= pose.found);
+    const target = unfound.find((d) => ['buoy', 'sign', 'lantern', 'house', 'tree'].includes(d.kind)) || unfound[1] || unfound[0];
+    G.loupeOn = true;
+    G.pointer.side = 1;
+    G.pointer.sx = target.x; G.pointer.sy = target.y;
+    G.pointer.x = PANEL_X[1] + target.x;
+    G.pointer.y = PANEL_Y + target.y;
   }
-  const limit = name === 'end' ? END_LIMIT_SECONDS : PLAY_SECONDS;
-  const horizon = name === 'end' ? HORIZON_END : HORIZON_PLAY;
-  for (let index = 0; index < limit / STEP; index += 1) {
-    if (world.step(STEP, autopilot(world.state, horizon), false) & EVENT_OVER) break;
-  }
-  const over = world.state.lives === 0;
-  return { screen: over ? SCREEN_OVER : SCREEN_PLAY, best: world.state.score };
+  return true;
 }
